@@ -328,6 +328,7 @@ def vm_migration(variants: list, cluster_obj: object) -> None:
     clo = cluster_obj
     error_counter = 0
     problems: list = []
+    migrations: list = []
     for variant in variants:
         if error_counter > 2:
             logger.exception(f'The number of migration errors has reached {error_counter} pieces.')
@@ -350,7 +351,9 @@ def vm_migration(variants: list, cluster_obj: object) -> None:
         else:
             job = requests.post(url, cookies=payload, headers=header, data=options, verify=False)
             if job.ok:
-                logger.info(f'Migration VM:{vm} ({round(clo.cl_vms[vm]["mem"] / GB, 2)} GB) from {donor} to {recipient}...')
+                msg = f'Migration VM:{vm} ({round(clo.cl_vms[vm]["mem"] / GB, 2)} GB) from {donor} to {recipient}...'
+                migrations.append(msg)
+                logger.info(msg)
                 pid = job.json()['data']
                 error_counter -= 1
             else:
@@ -379,23 +382,32 @@ def vm_migration(variants: list, cluster_obj: object) -> None:
                     logger.info(f'VM Migration: {vm}... {timer} sec.')
             break  # for variant in variants:
 
+    message = 'Migration of VMs complete.\n\n'
+    message = message + '\n'.join(migrations)
+    send_mail(message, 'VMs have been rebalanced')
 
-def send_mail(message: str):
+
+def send_mail(message: str, subject: str = None):
     if send_on:
         logger.debug("Starting send_mail")
         email_content = message
         msg = EmailMessage()
         msg.set_payload(email_content)
+        if subject is None:
         msg['Subject'] = cfg["mail"]["message_subject"]
+        else:
+            msg['Subject'] = subject
         msg['From'] = cfg["mail"]["from"]
         msg['To'] = cfg["mail"]["to"]
         login: str = cfg["mail"]["login"]
         password: str = cfg["mail"]["password"]
+        login_required = (len(login) > 0)
         s = smtplib.SMTP(f'{cfg["mail"]["server"]["address"]}:{cfg["mail"]["server"]["port"]}')
         encryption = cfg["mail"]["ssl_tls"]
         if encryption:
             s.starttls()
         try:
+            if login_required:
             s.login(login, password)
             s.sendmail(msg['From'], [msg['To']], msg.as_string())
             logger.trace('Notification sent')
