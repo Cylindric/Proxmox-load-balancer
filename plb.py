@@ -71,6 +71,7 @@ class Cluster:
         logger.debug("init when creating a Cluster object")
         """Cluster"""
         self.server: str = server
+        self.cl_node_info = {}                # The cluster node information.
         self.cl_name = self.cluster_name()
         """VMs and nodes"""
         self.cl_nodes: int = 0                      # The number of nodes. Calculated in Cluster.cluster_name
@@ -115,6 +116,9 @@ class Cluster:
             if i["type"] == "cluster":
                 name = i["name"]
                 self.cl_nodes = i["nodes"]
+            if i["type"] == "node":
+                name = i["name"]
+                self.cl_node_info[name] = i
         return name
 
     def cluster_items(self):
@@ -143,6 +147,7 @@ class Cluster:
                 item["cpu_used"] = round(item["maxcpu"] * item["cpu"], 2)   # Adding the value of the cores used
                 item["free_mem"] = item["maxmem"] - item["mem"]             # Adding the value of free RAM
                 item["mem_load"] = item["mem"] / item["maxmem"]             # Adding the RAM load value
+                item["cluster_status"] = self.cl_node_info[item["node"]]["online"]
                 nodes_dict[item["node"]] = item
                 if item["node"] not in excluded_nodes:
                     self.included_nodes[item["node"]] = item
@@ -263,8 +268,12 @@ def need_to_balance_checking(cluster_obj: object) -> bool:
     global sum_of_deviations, iteration
     nodes = cluster_obj.included_nodes
     average = cluster_obj.mem_load_included
+    all_nodes_available = True
     for host, values in nodes.items():
         values["deviation"] = abs(values["mem_load"] - average)
+        if values["cluster_status"] != 1:
+            all_nodes_available = False
+            logger.debug(f'Found an offline node: {values["name"]}')
     sum_of_deviations = sum(values["deviation"] for values in nodes.values())
     if iteration > 10:
         operational_deviation = CD/2 if random() > 1/3 else CD/4 if random() > 1/6 else CD/8
